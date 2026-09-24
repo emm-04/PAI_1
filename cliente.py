@@ -1,3 +1,4 @@
+import secrets
 import requests
 import time
 import hmac
@@ -5,8 +6,10 @@ import hashlib
 import json
 import uuid
 
+
 url = "http://localhost:8080/api/v1/transfer"
-SHARED_SECRET = b"esta_es_una_clave_compartida_muy_segura_256b"
+# Genera una clave segura de 32 bytes (256 bits) usando el PRNG del sistema
+SHARED_SECRET = bytes.fromhex("9597a9db133b65dda1588cb88286a646b7876af37451fa62f368c2548bfc162d")
 
 # 1. Preparar los datos
 payload = {
