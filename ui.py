@@ -281,3 +281,5 @@ def web_page():
                         streamlit.success("🛡️ SERVIDOR PROTEGIDO: Paquete fuera de la ventana de tiempo rechazado.")
 
 
+if __name__ == "__main__":
+    web_page()
