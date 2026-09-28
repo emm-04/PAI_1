@@ -1,0 +1,170 @@
+from fastapi import FastAPI, HTTPException, Header, Request
+from pydantic import BaseModel
+import time
+import security
+import sqlite3
+import json
+import uvicorn
+import sys
+from pathlib import Path
+directorio_padre = Path(__file__).resolve().parent.parent
+sys.path.append(str(directorio_padre))
+import DB.database as database
+
+
+
+
+app = FastAPI()
+
+class UserAuth(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/v1/register")
+def register(user: UserAuth):
+    conn = database.get_connection()
+    c = conn.cursor()
+
+    salt, key  = security.hash_password(user.password)
+
+    try:
+        c.execute("INSERT INTO users(username, password_hash, salt) VALUES (?, ?, ?)",
+                  (user.username, key, salt))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code = 400, detail = 'Usuario ya existe')
+    finally:
+        conn.close()
+        
+
+    return {"message": "Usuario registrado exitosamente"}
+
+
+@app.post("/api/v1/login")
+def login(user: UserAuth):
+    conn = database.get_connection()
+    c = conn.cursor()
+    c.execute("SELECT password_hash, salt, failed_attempts FROM users WHERE username = ?", (user.username,))
+    row = c.fetchone()
+
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
+
+    stored_hash, salt, failed_attempts = row
+
+    if failed_attempts >= 3:
+        conn.close()
+        raise HTTPException(status_code = 403, detail = "Cuenta bloqueada por múltiples intentos fallidos.")
+
+
+    _, computed_hash = security.hash_password(user.password, salt)
+    if not security.secrets.compare_digest(stored_hash, computed_hash):
+        c.execute("UPDATE users SET failed_attempts = failed_attempts + 1 WHERE username = ?", (user.username,))
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
+
+
+    
+
+    session_token = security.secrets.token_hex(32)
+   # conn = database.get_connection()
+   # c = conn.cursor()
+    c.execute("UPDATE users SET failed_attempts = 0, session_token = ? WHERE username = ?", 
+                  (session_token, user.username))
+    conn.commit()
+    conn.close()
+    
+    return {"message": "Se ha iniciado sesión con éxito.", "session_token": session_token}
+
+
+@app.post("/api/v1/logout")
+def logout(x_session_token: str = Header(None)):
+    if not x_session_token:
+        raise HTTPException(status_code = 400, detail = "Token de sesión no proporcionado.")
+        
+    conn = database.get_connection()
+    c = conn.cursor()
+    
+    c.execute("UPDATE users SET session_token = NULL WHERE session_token = ?", (x_session_token,))
+    
+    if c.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code = 401, detail = "Sesión inválida o ya cerrada.")
+        
+    conn.commit()
+    conn.close()
+    return {"message": "Sesión cerrada correctamente."}
+
+
+
+# --- TRANSACCIONES ---
+
+@app.post("/api/v1/transfer")
+async def transfer(
+    request: Request,
+    username: str = Header(...),
+    x_nonce: str = Header(...),
+    x_timestamp: str = Header(...),
+    x_signature: str = Header(...)
+):
+    if not x_signature or not x_nonce or not x_timestamp:
+        raise HTTPException(status_code = 400, detail = "Faltan cabeceras de seguridad.")
+
+    conn = database.get_connection()
+    c = conn.cursor()
+    c.execute("SELECT session_token FROM users WHERE username = ?", (username,))
+    row = c.fetchone()
+    conn.close()
+
+    if not row or row[0] == None:
+        raise HTTPException(status_code = 401, detail = "Usuario inexistente o no autenticado")
+    
+    token = row[0]
+    session_token = bytes.fromhex(token)
+    
+    # 1. Validación de la ventana de tiempo (Replay mitigation)
+    current_time = int(time.time())
+    if abs(current_time - float(x_timestamp)) > 60: # 60 segundos de validez
+        raise HTTPException(status_code = 400, detail = "Timestamp expirado (Posible Replay Attack)")
+
+    # 2. Validación de Nonce único (Replay mitigation)
+    conn = database.get_connection()
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO nonces(nonce, timestamp) VALUES (?, ?)",
+                  (x_nonce, x_timestamp))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code = 400, detail = "Replay Attack detectado")
+    
+    conn.close()
+
+    # 3. Validación de Integridad HMAC (MitM mitigation)
+    body_bytes = await request.body()
+    body_str = body_bytes.decode('utf-8')
+
+    # El payload firmado incluye el cuerpo, el nonce y el timestamp
+    payload_to_verify = f"{body_str}|{x_nonce}|{x_timestamp}"
+
+    if not security.verify_mac(payload_to_verify, session_token, x_signature):
+        raise HTTPException(status_code = 403, detail = "Firma MAC inválida. Integridad comprometida")
+
+
+    payload = json.loads(body_bytes)
+    conn = database.get_connection()
+    c = conn.cursor()
+    c.execute("INSERT INTO transactions(txId, origin_account, destination_account, amount, currency) VALUES (?, ?, ?, ?, ?)",
+                (payload['txId'], payload['origin_account'], payload['destination_account'], payload['amount'], payload['currency']))
+    conn.commit()
+    conn.close()
+
+    return {"status": "success", "message": "Transacción procesada con integridad verificada"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host = "127.0.0.1", port = 8080)
