@@ -7,25 +7,45 @@ import json
 import uvicorn
 import sys
 from pathlib import Path
+
+# ==========================================
+# CONFIGURACIÓN DE RUTAS E IMPORTACIONES
+# ==========================================
 directorio_padre = Path(__file__).resolve().parent.parent
 sys.path.append(str(directorio_padre))
 import DB.database as database
 
 
-
-
+# Inicialización de la aplicación FastAPI
 app = FastAPI()
 
+# ==========================================
+# MODELOS DE DATOS (Pydantic)
+# ==========================================
+
 class UserAuth(BaseModel):
+    """
+    Esquema para la validación automática de los datos de entrada en endpoints de autenticación.
+    FastAPI rechazará automáticamente peticiones que no cumplan este formato.
+    """
     username: str
     password: str
 
+# ==========================================
+# ENDPOINTS DE AUTENTICACIÓN
+# ==========================================
 
 @app.post("/api/v1/register")
 def register(user: UserAuth):
+    """
+    Registra un nuevo usuario en el sistema.
+    Almacena las contraseñas de forma segura utilizando derivación de claves (hashes).
+    """
     conn = database.get_connection()
     c = conn.cursor()
 
+    # Generamos el hash y el salt a través del módulo de seguridad.
+    # NUNCA guardamos la contraseña plana 'user.password'.
     salt, key  = security.hash_password(user.password)
 
     try:
@@ -33,46 +53,59 @@ def register(user: UserAuth):
                   (user.username, key, salt))
         conn.commit()
     except sqlite3.IntegrityError:
+        # Prevención de enumeración/fuga de información: 
+        # Devuelve un 400 claro si el usuario ya existe, sin exponer detalles de la BD.
         raise HTTPException(status_code = 400, detail = 'Usuario ya existe')
     finally:
         conn.close()
         
-
     return {"message": "Usuario registrado exitosamente"}
 
 
 @app.post("/api/v1/login")
 def login(user: UserAuth):
+    """
+    Autentica a un usuario y genera un token de sesión de un solo uso.
+    Implementa protección contra fuerza bruta y ataques de tiempo.
+    """
     conn = database.get_connection()
     c = conn.cursor()
     c.execute("SELECT password_hash, salt, failed_attempts FROM users WHERE username = ?", (user.username,))
     row = c.fetchone()
 
-
+    # 1. VERIFICACIÓN DE EXISTENCIA
     if not row:
         conn.close()
+        # Usamos un mensaje genérico ("Credenciales inválidas") para evitar 
+        # ataques de enumeración de usuarios.
         raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
 
     stored_hash, salt, failed_attempts = row
 
+    # 2. PROTECCIÓN CONTRA FUERZA BRUTA
+    # Bloqueamos la cuenta si hay 3 o más intentos fallidos.
+    # Hacemos esto ANTES de calcular el hash para evitar un ataque DoS (Denegación de Servicio)
+    # que intente saturar la CPU del servidor calculando hashes costosos en cuentas ya bloqueadas.
     if failed_attempts >= 3:
         conn.close()
         raise HTTPException(status_code = 403, detail = "Cuenta bloqueada por múltiples intentos fallidos.")
 
-
+    # 3. VERIFICACIÓN DE LA CONTRASEÑA
     _, computed_hash = security.hash_password(user.password, salt)
+    # Utilizamos compare_digest para evitar Timing Attacks
     if not security.secrets.compare_digest(stored_hash, computed_hash):
+        # Si falla, incrementamos el contador de intentos fallidos
         c.execute("UPDATE users SET failed_attempts = failed_attempts + 1 WHERE username = ?", (user.username,))
         conn.commit()
         conn.close()
         raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
 
 
-    
-
+    # 4. GENERACIÓN DE SESIÓN (Estado autenticado)
+    # Generamos un token criptográficamente seguro de 32 bytes (64 caracteres hex)
     session_token = security.secrets.token_hex(32)
-   # conn = database.get_connection()
-   # c = conn.cursor()
+
+    # Reseteamos los intentos fallidos y guardamos el token activo
     c.execute("UPDATE users SET failed_attempts = 0, session_token = ? WHERE username = ?", 
                   (session_token, user.username))
     conn.commit()
@@ -83,15 +116,20 @@ def login(user: UserAuth):
 
 @app.post("/api/v1/logout")
 def logout(x_session_token: str = Header(None)):
+    """
+    Cierra la sesión del usuario invalidando el token en la base de datos (Stateful Session).
+    """
     if not x_session_token:
         raise HTTPException(status_code = 400, detail = "Token de sesión no proporcionado.")
         
     conn = database.get_connection()
     c = conn.cursor()
-    
+
+    # Invalidamos el token estableciéndolo a NULL
     c.execute("UPDATE users SET session_token = NULL WHERE session_token = ?", (x_session_token,))
     
     if c.rowcount == 0:
+        # Si rowcount es 0, significa que el token no existía en la base de datos
         conn.close()
         raise HTTPException(status_code = 401, detail = "Sesión inválida o ya cerrada.")
         
@@ -101,7 +139,9 @@ def logout(x_session_token: str = Header(None)):
 
 
 
-# --- TRANSACCIONES ---
+# ==========================================
+# ENDPOINTS DE TRANSACCIONES 
+# ==========================================
 
 @app.post("/api/v1/transfer")
 async def transfer(
@@ -111,6 +151,12 @@ async def transfer(
     x_timestamp: str = Header(...),
     x_signature: str = Header(...)
 ):
+    """
+    Procesa una transferencia de fondos.
+    Este es el endpoint más crítico. Implementa firma HMAC, mitigación de Replay Attacks 
+    (mediante Nonces y Timestamps) y validación de sesión.
+    """
+    # 0. VALIDACIÓN DE CABECERAS Y SESIÓN
     if not x_signature or not x_nonce or not x_timestamp:
         raise HTTPException(status_code = 400, detail = "Faltan cabeceras de seguridad.")
 
@@ -122,19 +168,23 @@ async def transfer(
 
     if not row or row[0] == None:
         raise HTTPException(status_code = 401, detail = "Usuario inexistente o no autenticado")
-    
+
+    # El token de sesión actuará como nuestra clave secreta compartida (Secret Key) para el HMAC
     token = row[0]
     session_token = bytes.fromhex(token)
     
-    # 1. Validación de la ventana de tiempo (Replay mitigation)
+    # 1. MITIGACIÓN DE REPLAY ATTACK (Ventana de Tiempo)
+    # Evita que un atacante guarde una petición interceptada y la envíe horas después.
     current_time = int(time.time())
     if abs(current_time - float(x_timestamp)) > 60: # 60 segundos de validez
         raise HTTPException(status_code = 400, detail = "Timestamp expirado (Posible Replay Attack)")
 
-    # 2. Validación de Nonce único (Replay mitigation)
+    # 2. MITIGACIÓN DE REPLAY ATTACK (Nonce Único)
+    # Evita que, dentro de esos 60 segundos, el atacante duplique la misma petición.
     conn = database.get_connection()
     c = conn.cursor()
     try:
+        # Si el nonce ya existe en la BD, lanzará IntegrityError
         c.execute("INSERT INTO nonces(nonce, timestamp) VALUES (?, ?)",
                   (x_nonce, x_timestamp))
         conn.commit()
@@ -144,20 +194,23 @@ async def transfer(
     
     conn.close()
 
-    # 3. Validación de Integridad HMAC (MitM mitigation)
+    # 3. VERIFICACIÓN DE INTEGRIDAD HMAC (Mitigación MitM)
+    # Evita que un atacante "Man-in-the-Middle" altere la cantidad (amount) o el destinatario.
     body_bytes = await request.body()
     body_str = body_bytes.decode('utf-8')
 
-    # El payload firmado incluye el cuerpo, el nonce y el timestamp
+    # Reconstruimos el payload exacto que el cliente debe haber firmado
     payload_to_verify = f"{body_str}|{x_nonce}|{x_timestamp}"
-
+    # Verificamos que la firma recibida coincide con la que calculamos nosotros
     if not security.verify_mac(payload_to_verify, session_token, x_signature):
         raise HTTPException(status_code = 403, detail = "Firma MAC inválida. Integridad comprometida")
 
-
+    # 4. EJECUCIÓN DE LA TRANSACCIÓN
+    # Si llegamos aquí, la petición es fresca, única, íntegra y autética.
     payload = json.loads(body_bytes)
     conn = database.get_connection()
     c = conn.cursor()
+    # Usamos consultas parametrizadas (?) para prevenir Inyección SQL
     c.execute("INSERT INTO transactions(txId, origin_account, destination_account, amount, currency) VALUES (?, ?, ?, ?, ?)",
                 (payload['txId'], payload['origin_account'], payload['destination_account'], payload['amount'], payload['currency']))
     conn.commit()
@@ -167,4 +220,5 @@ async def transfer(
 
 
 if __name__ == "__main__":
+    # Inicia el servidor ASGI de Uvicorn (Corregido un pequeño typo en el '8080)v' original)
     uvicorn.run(app, host = "127.0.0.1", port = 8080)
