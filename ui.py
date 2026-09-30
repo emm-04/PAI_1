@@ -153,7 +153,6 @@ def web_page():
                 response = requests.post(f"{BASE_URL}/api/v1/transfer", data = body, headers = headers)
 
                 if response.status_code == 200:
-                    streamlit.balloons()
                     streamlit.success(f"✅ Transacción Aprobada (Status {response.status_code}): {response.json().get("message")}")
                 else:
                     streamlit.error(f"❌ Transacción Rechazada (Status {response.status_code}): {response.json().get("detail")}")
@@ -281,3 +280,5 @@ def web_page():
                         streamlit.success("🛡️ SERVIDOR PROTEGIDO: Paquete fuera de la ventana de tiempo rechazado.")
 
 
+if __name__ == "__main__":
+    web_page()

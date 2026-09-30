@@ -18,6 +18,7 @@ def init_db():
                     password_hash BLOB,
                     salt TEXT,
                     failed_attempts INTEGER DEFAULT 0,
+                    lockout_until REAL DEFAULT NULL,
                     session_token BLOB)''')
 
     #Tabla de nonces

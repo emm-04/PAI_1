@@ -23,6 +23,11 @@ class UserAuth(BaseModel):
 
 @app.post("/api/v1/register")
 def register(user: UserAuth):
+    is_valid, error_msg = security.validate_password_policy(user.password, user.username)
+    if not is_valid:
+        raise HTTPException(status_code = 400, detail = error_msg)
+
+
     conn = database.get_connection()
     c = conn.cursor()
 
@@ -45,7 +50,7 @@ def register(user: UserAuth):
 def login(user: UserAuth):
     conn = database.get_connection()
     c = conn.cursor()
-    c.execute("SELECT password_hash, salt, failed_attempts FROM users WHERE username = ?", (user.username,))
+    c.execute("SELECT password_hash, salt, failed_attempts, lockout_until FROM users WHERE username = ?", (user.username,))
     row = c.fetchone()
 
 
@@ -53,16 +58,23 @@ def login(user: UserAuth):
         conn.close()
         raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
 
-    stored_hash, salt, failed_attempts = row
+    stored_hash, salt, failed_attempts, lockout_until = row
+    current_time = time.time()
 
-    if failed_attempts >= 3:
-        conn.close()
-        raise HTTPException(status_code = 403, detail = "Cuenta bloqueada por múltiples intentos fallidos.")
+    if failed_attempts >= 3 and lockout_until is not None:
+        if current_time < lockout_until:
+            remaining_seconds = int(lockout_until - current_time)
+            conn.close()
+            raise HTTPException(status_code = 403, detail = f"Cuenta bloqueada por múltiples intentos fallidos. Inténtelo de nuevo en {remaining_seconds} segundos.")
+    
 
 
     _, computed_hash = security.hash_password(user.password, salt)
     if not security.secrets.compare_digest(stored_hash, computed_hash):
-        c.execute("UPDATE users SET failed_attempts = failed_attempts + 1 WHERE username = ?", (user.username,))
+        if failed_attempts >= 2:
+            lockout_until = current_time + 300.0
+        
+        c.execute("UPDATE users SET failed_attempts = failed_attempts + 1, lockout_until = ? WHERE username = ?", (lockout_until, user.username,))
         conn.commit()
         conn.close()
         raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
@@ -73,7 +85,7 @@ def login(user: UserAuth):
     session_token = security.secrets.token_hex(32)
    # conn = database.get_connection()
    # c = conn.cursor()
-    c.execute("UPDATE users SET failed_attempts = 0, session_token = ? WHERE username = ?", 
+    c.execute("UPDATE users SET failed_attempts = 0, lockout_until = NULL, session_token = ? WHERE username = ?", 
                   (session_token, user.username))
     conn.commit()
     conn.close()
