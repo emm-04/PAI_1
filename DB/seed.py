@@ -1,31 +1,44 @@
+import sqlite3
 import sys
+import logging
 from pathlib import Path
+
 
 # ==========================================
 # CONFIGURACIÓN DE RUTAS E IMPORTACIONES
 # ==========================================
-# Para que Python pueda encontrar e importar módulos que están en carpetas superiores o hermanas
-# (como 'Server' y 'DB'), obtenemos la ruta del directorio padre y la añadimos dinámicamente
-# al path del sistema durante la ejecución del script.
+# Ajustamos las rutas para poder importar los módulos del proyecto
 directorio_padre = Path(__file__).resolve().parent.parent
 sys.path.append(str(directorio_padre))
 
+import DB.database as database
 import Server.security as security
-import sqlite3
-from DB import database
 
 
-DB_FILE = "Database/secbank.db"
+# ==========================================
+# CONFIGURACIÓN DE AUDITORÍA (LOGGING)
+# ==========================================
+# Configurar el mismo archivo de log que el servidor
+logging.basicConfig(
+    level = logging.INFO,
+    format = "%(asctime)s | %(levelname)-8s | %(message)s",
+    datefmt = "%Y-%m-%d %H:%M:%S",
+    handlers = [
+        logging.FileHandler("server_audit.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("SecBank-Seed")
 
-def seed_database():
+def run_seed():
     """
-    Puebla (seed) la base de datos con información inicial para pruebas.
-    Toma una lista de usuarios con contraseñas en texto plano, las procesa de 
-    forma segura y las inserta en la base de datos.
+    Puebla la base de datos con usuarios de prueba (semilla).
+    Utiliza el módulo de seguridad para generar los hashes y salts
+    antes de la inserción directa en SQLite.
     """
-
-    # Lista de usuarios de prueba (Username, Password en texto plano).
-    # Útil para tener un entorno funcional sin tener que registrar usuarios a mano cada vez.
+    logger.info("Iniciando volcado de datos semilla (Seed)...")
+    
+    # Lista de usuarios de prueba con contraseñas que cumplen la nueva política
     test_users = [
         ("Marcos", "Secur3Bank!2026"),
         ("Pedro", "BlankP@ssword456"),
@@ -33,37 +46,25 @@ def seed_database():
         ("Carlos", "V@ultAccess789*")
     ]
 
-    # Obtenemos la conexión utilizando el módulo 'database' previamente configurado
+    # Obtenemos la conexión a la base de datos usando nuestro módulo
     conn = database.get_connection()
     c = conn.cursor()
-    print("[*] Insertando usuarios de prueba en la base de datos...")
 
-    # Iteramos sobre cada usuario de prueba para procesarlo e insertarlo
     for username, password in test_users:
-        # 1. PROCESAMIENTO SEGURO: 
-        # Delegamos la generación del hash y el salt al módulo de seguridad.
-        # NUNCA se interactúa con la BD usando la contraseña en texto plano.
-        salt, pwd_hash = security.hash_password(password)
+        # 1. Generamos el hash criptográfico y el salt
+        salt, key = security.hash_password(password)
+        
+        # 2. Insertamos en la base de datos
         try:
-            # 2. INSERCIÓN:
-            # Utilizamos consultas parametrizadas (?, ?, ?) para evitar inyecciones SQL.
             c.execute("INSERT INTO users(username, password_hash, salt) VALUES (?, ?, ?)",
-                      (username, pwd_hash, salt))
-            print(f"[+] Usuario '{username}' registrado exitosamente.")
+                      (username, key, salt))
+            conn.commit()
+            logger.info(f"Usuario semilla registrado directamente en BD: '{username}'")
         except sqlite3.IntegrityError:
-            # 3. MANEJO DE COLISIONES:
-            # Si el script se ejecuta más de una vez, SQLite lanzará un IntegrityError 
-            # porque la columna 'username' está marcada como UNIQUE. 
-            # Lo capturamos para que el script no se rompa.
-            print(f"[!] Usuario '{username}' ya existe en la base de datos.")
+            logger.warning(f"El usuario semilla '{username}' ya existe en la base de datos. Saltando...")
 
-    # Guardamos los cambios de las inserciones exitosas y cerramos la conexión
-    conn.commit()
     conn.close()
-    print("[*] Base de datos lista para pruebas.")
-
+    logger.info("Proceso de inicialización de usuarios finalizado.")
 
 if __name__ == "__main__":
-    # Bloque de ejecución principal: solo ejecuta la función si el script 
-    # se lanza directamente desde la terminal.
-    seed_database()
+    run_seed()

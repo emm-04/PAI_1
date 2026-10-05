@@ -1,0 +1,46 @@
+2026-10-05 20:22:33 | INFO     | Iniciando volcado de datos semilla (Seed)...
+2026-10-05 20:22:33 | INFO     | Usuario semilla registrado directamente en BD: 'Marcos'
+2026-10-05 20:22:34 | INFO     | Usuario semilla registrado directamente en BD: 'Pedro'
+2026-10-05 20:22:34 | INFO     | Usuario semilla registrado directamente en BD: 'Cristina'
+2026-10-05 20:22:34 | INFO     | Usuario semilla registrado directamente en BD: 'Carlos'
+2026-10-05 20:22:34 | INFO     | Proceso de inicialización de usuarios finalizado.
+2026-10-05 20:23:11 | INFO     | Nuevo usuario registrado exitosamente: 'ismael'
+2026-10-05 20:23:11 | INFO     | 127.0.0.1 -> POST /api/v1/register | Status: 200 | 107.31ms
+2026-10-05 20:23:11 | INFO     | Inicio de sesión exitoso para usuario 'ismael'.
+2026-10-05 20:23:11 | INFO     | 127.0.0.1 -> POST /api/v1/login | Status: 200 | 106.87ms
+2026-10-05 20:23:11 | INFO     | Transacción exitosa procesada para 'ismael': 500.0 EUR hacia ES987654321
+2026-10-05 20:23:11 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 200 | 23.43ms
+2026-10-05 20:23:11 | INFO     | Cierre de sesión ejecutado correctamente.
+2026-10-05 20:23:11 | INFO     | 127.0.0.1 -> POST /api/v1/logout | Status: 200 | 10.62ms
+2026-10-05 20:23:21 | INFO     | Inicio de sesión exitoso para usuario 'Marcos'.
+2026-10-05 20:23:21 | INFO     | 127.0.0.1 -> POST /api/v1/login | Status: 200 | 112.26ms
+2026-10-05 20:23:21 | INFO     | Transacción exitosa procesada para 'Marcos': 100.0 EUR hacia ES5544332211
+2026-10-05 20:23:21 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 200 | 19.92ms
+2026-10-05 20:23:22 | WARNING  | Posible MitM Attack: Firma HMAC inválida detectada para 'Marcos'.
+2026-10-05 20:23:22 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 403 | 13.97ms
+2026-10-05 20:23:22 | WARNING  | Replay Attack interceptado (Nonce duplicado) en cuenta 'Marcos'.
+2026-10-05 20:23:22 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 400 | 4.61ms
+2026-10-05 20:23:22 | WARNING  | Posible Replay Attack (Timestamp expirado) en cuenta 'Marcos'.
+2026-10-05 20:23:22 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 400 | 2.11ms
+2026-10-05 20:23:22 | WARNING  | Transferencia rechazada: Usuario 'Carlos' inexistente o sin sesión activa.
+2026-10-05 20:23:22 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 401 | 3.62ms
+2026-10-05 20:23:22 | INFO     | Cierre de sesión ejecutado correctamente.
+2026-10-05 20:23:22 | INFO     | 127.0.0.1 -> POST /api/v1/logout | Status: 200 | 10.75ms
+2026-10-05 20:23:49 | INFO     | Inicio de sesión exitoso para usuario 'Marcos'.
+2026-10-05 20:23:49 | INFO     | 127.0.0.1 -> POST /api/v1/login | Status: 200 | 145.61ms
+2026-10-05 20:24:01 | WARNING  | Posible MitM Attack: Firma HMAC inválida detectada para 'Marcos'.
+2026-10-05 20:24:01 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 403 | 20.00ms
+2026-10-05 20:24:07 | WARNING  | Posible Replay Attack (Timestamp expirado) en cuenta 'Marcos'.
+2026-10-05 20:24:07 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 400 | 6.13ms
+2026-10-05 20:24:10 | INFO     | Transacción exitosa procesada para 'Marcos': 50.0 EUR hacia ES987654321
+2026-10-05 20:24:10 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 200 | 37.76ms
+2026-10-05 20:24:10 | WARNING  | Replay Attack interceptado (Nonce duplicado) en cuenta 'Marcos'.
+2026-10-05 20:24:10 | INFO     | 127.0.0.1 -> POST /api/v1/transfer | Status: 400 | 7.06ms
+2026-10-05 20:24:15 | INFO     | Cierre de sesión ejecutado correctamente.
+2026-10-05 20:24:15 | INFO     | 127.0.0.1 -> POST /api/v1/logout | Status: 200 | 12.12ms
+2026-10-05 20:24:36 | WARNING  | Intento de registro fallido para 'Ronald': Contraseña débil.
+2026-10-05 20:24:36 | INFO     | 127.0.0.1 -> POST /api/v1/register | Status: 400 | 2.75ms
+2026-10-05 20:24:45 | WARNING  | Intento de registro fallido para 'Ronald': Contraseña débil.
+2026-10-05 20:24:45 | INFO     | 127.0.0.1 -> POST /api/v1/register | Status: 400 | 10.30ms
+2026-10-05 20:25:01 | INFO     | Nuevo usuario registrado exitosamente: 'Felix'
+2026-10-05 20:25:01 | INFO     | 127.0.0.1 -> POST /api/v1/register | Status: 200 | 137.97ms
