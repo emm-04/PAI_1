@@ -37,10 +37,6 @@ class UserAuth(BaseModel):
 
 @app.post("/api/v1/register")
 def register(user: UserAuth):
-    """
-    Registra un nuevo usuario en el sistema.
-    Almacena las contraseñas de forma segura utilizando derivación de claves (hashes).
-    """
     conn = database.get_connection()
     c = conn.cursor()
 
@@ -70,7 +66,7 @@ def login(user: UserAuth):
     """
     conn = database.get_connection()
     c = conn.cursor()
-    c.execute("SELECT password_hash, salt, failed_attempts FROM users WHERE username = ?", (user.username,))
+    c.execute("SELECT password_hash, salt, failed_attempts, lockout_until FROM users WHERE username = ?", (user.username,))
     row = c.fetchone()
 
     # 1. VERIFICACIÓN DE EXISTENCIA
@@ -80,12 +76,9 @@ def login(user: UserAuth):
         # ataques de enumeración de usuarios.
         raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
 
-    stored_hash, salt, failed_attempts = row
+    stored_hash, salt, failed_attempts, lockout_until = row
+    current_time = time.time()
 
-    # 2. PROTECCIÓN CONTRA FUERZA BRUTA
-    # Bloqueamos la cuenta si hay 3 o más intentos fallidos.
-    # Hacemos esto ANTES de calcular el hash para evitar un ataque DoS (Denegación de Servicio)
-    # que intente saturar la CPU del servidor calculando hashes costosos en cuentas ya bloqueadas.
     if failed_attempts >= 3:
         conn.close()
         raise HTTPException(status_code = 403, detail = "Cuenta bloqueada por múltiples intentos fallidos.")
@@ -94,7 +87,6 @@ def login(user: UserAuth):
     _, computed_hash = security.hash_password(user.password, salt)
     # Utilizamos compare_digest para evitar Timing Attacks
     if not security.secrets.compare_digest(stored_hash, computed_hash):
-        # Si falla, incrementamos el contador de intentos fallidos
         c.execute("UPDATE users SET failed_attempts = failed_attempts + 1 WHERE username = ?", (user.username,))
         conn.commit()
         conn.close()
@@ -104,8 +96,8 @@ def login(user: UserAuth):
     # 4. GENERACIÓN DE SESIÓN (Estado autenticado)
     # Generamos un token criptográficamente seguro de 32 bytes (64 caracteres hex)
     session_token = security.secrets.token_hex(32)
-
-    # Reseteamos los intentos fallidos y guardamos el token activo
+   # conn = database.get_connection()
+   # c = conn.cursor()
     c.execute("UPDATE users SET failed_attempts = 0, session_token = ? WHERE username = ?", 
                   (session_token, user.username))
     conn.commit()
