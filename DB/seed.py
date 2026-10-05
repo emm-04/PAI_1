@@ -27,10 +27,10 @@ def seed_database():
     # Lista de usuarios de prueba (Username, Password en texto plano).
     # Útil para tener un entorno funcional sin tener que registrar usuarios a mano cada vez.
     test_users = [
-        ("Marcos", "marcosSecurePass2026"),
-        ("Pedro", "PedroBlankPass456"),
-        ("Cristina", "crisSSII26-27"),
-        ("Carlos", "carlosVault789")
+        ("Marcos", "Secur3Bank!2026"),
+        ("Pedro", "BlankP@ssword456"),
+        ("Cristina", "T3st_SSII_2026%"),
+        ("Carlos", "V@ultAccess789*")
     ]
 
     # Obtenemos la conexión utilizando el módulo 'database' previamente configurado

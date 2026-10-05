@@ -31,6 +31,7 @@ def init_db():
                     password_hash BLOB,                       -- Hash de la contraseña (nunca en texto plano)
                     salt TEXT,                                -- Cadena aleatoria para defenderse contra ataques de diccionario/Rainbow Tables
                     failed_attempts INTEGER DEFAULT 0,        -- Contador para bloquear la cuenta y evitar ataques de fuerza bruta
+                    lockout_until INTEGER,                    -- NUEVO: Marca de tiempo hasta cuándo está bloqueada la cuenta
                     session_token BLOB                        -- Token de sesión actual del usuario autenticado
                 )''')
     
@@ -75,4 +76,3 @@ if __name__ == "__main__":
     # Bloque de ejecución principal: solo se ejecuta si este script se llama directamente.
     init_db()
     print("Base de datos secbank.db inicializada con soporte para sesiones.")
-

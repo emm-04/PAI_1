@@ -35,7 +35,8 @@ def execute_test_suite():
     # ==========================================
     # Para poder firmar transacciones, necesitamos un token de sesión válido.
     # Simulamos el login de un usuario legítimo (previamente creado por seed.py).
-    creds = {"username": "Marcos", "password": "marcosSecurePass2026"}
+    # CORREGIDO: Contraseña actualizada para cumplir con la nueva política
+    creds = {"username": "Marcos", "password": "Secur3Bank!2026"}
     login_resp = requests.post(f"{BASE_URL}/api/v1/login", json = creds)
     if login_resp.status_code != 200:
         print("[!] ERROR CRÍTICO: No se pudo autenticar a 'Marcos'. Asegúrate de ejecutar seed.py y server.py primero.")
@@ -43,7 +44,8 @@ def execute_test_suite():
 
     # Extraemos el token que usaremos como 'secret_key' para nuestros tests
     session_token = login_resp.json().get("session_token")
-    print(login_resp.json().get("message"))
+    # CORREGIDO: Uso de comillas simples
+    print(login_resp.json().get('message'))
 
     # Datos base para una transferencia legítima
     tx_base = {
@@ -76,7 +78,8 @@ def execute_test_suite():
     }
 
     r = requests.post(f"{BASE_URL}/api/v1/transfer", data = body, headers = headers)
-    print(f" -> Resultado TC-01: Status {r.status_code} | Respuesta: {r.json().get("message")}")
+    # CORREGIDO: Uso de comillas simples
+    print(f" -> Resultado TC-01: Status {r.status_code} | Respuesta: {r.json().get('message')}")
     assert r.status_code == 200, "TC-01 Falló"
 
 
@@ -95,7 +98,8 @@ def execute_test_suite():
     # Enviamos el cuerpo alterado PERO mantenemos la firma original.
     # El servidor recalculará el HMAC con el body alterado, no coincidirá con la firma y lo rechazará.
     r = requests.post(f"{BASE_URL}/api/v1/transfer", data = tampered_body, headers = mitm_headers)
-    print(f" -> Resultado TC-02: Status {r.status_code} | Respuesta: {r.json().get("detail")}")
+    # CORREGIDO: Uso de comillas simples
+    print(f" -> Resultado TC-02: Status {r.status_code} | Respuesta: {r.json().get('detail')}")
     assert r.status_code == 403, "TC-02 Falló"
 
 
@@ -108,7 +112,8 @@ def execute_test_suite():
     # Enviamos exactamente el mismo 'body' y 'headers' (mismo nonce) del TC-01
     r = requests.post(f"{BASE_URL}/api/v1/transfer", data = body, headers = headers)
     # El servidor debe detectar en SQLite que el 'X-Nonce' ya fue procesado y rechazarlo.
-    print(f" -> Resultado TC-03: Status {r.status_code} | Respuesta: {r.json().get("detail")}")
+    # CORREGIDO: Uso de comillas simples
+    print(f" -> Resultado TC-03: Status {r.status_code} | Respuesta: {r.json().get('detail')}")
     assert r.status_code == 400, "TC-03 Falló"
 
 
@@ -133,7 +138,8 @@ def execute_test_suite():
     }
 
     r = requests.post(f"{BASE_URL}/api/v1/transfer", data = body, headers = expired_headers)
-    print(f" -> Resultado TC-04: Status {r.status_code} | Respuesta: {r.json().get("detail")}")
+    # CORREGIDO: Uso de comillas simples
+    print(f" -> Resultado TC-04: Status {r.status_code} | Respuesta: {r.json().get('detail')}")
     assert r.status_code == 400, "TC-04 Falló"
 
     
@@ -147,15 +153,17 @@ def execute_test_suite():
     # El servidor buscará el token de "Carlos", intentará validar el HMAC y fallará,
     # o detectará que "Carlos" no tiene una sesión activa (token = NULL).
     r = requests.post(f"{BASE_URL}/api/v1/transfer", data = body, headers = headers)
-    print(f" -> Resultado TC-05: Status {r.status_code} | Respuesta: {r.json().get("detail")}")
+    # CORREGIDO: Uso de comillas simples
+    print(f" -> Resultado TC-05: Status {r.status_code} | Respuesta: {r.json().get('detail')}")
     assert r.status_code == 401, "TC-05 Falló"
     
 
     # ==========================================
     # REQUISITO: LIMPIEZA DE SESIÓN
     # ==========================================
+    # CORREGIDO: Uso de comillas simples
     logout_resp = requests.post(f"{BASE_URL}/api/v1/logout", headers = {"X-Session-Token": session_token})
-    print("\n",logout_resp.json().get("message"))
+    print("\n",logout_resp.json().get('message'))
 
 
     print("=====================================================")

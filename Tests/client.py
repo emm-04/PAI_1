@@ -5,6 +5,7 @@ import hmac
 import hashlib
 import json
 import uuid
+import sys
 
 # ==========================================
 # CONFIGURACIÓN DEL CLIENTE
@@ -21,15 +22,16 @@ def run_client():
     # ==========================================
     # 1. REGISTRO Y AUTENTICACIÓN
     # ==========================================
-    creds = {"username": "ismael", "password": "SuperSecretPassword123"}
+    # CORREGIDO: Contraseña actualizada para cumplir con la política (incluye caracteres especiales)
+    creds = {"username": "ismael", "password": "SuperSecretP@ssword123!"}
 
     # Intentamos registrar al usuario. Si ya existe, el servidor devolverá un error, 
     # pero nuestro código lo manejará leyendo el campo 'detail' de FastAPI.
     register_resp = requests.post(f"{BASE_URL}/api/v1/register", json = creds)
     if register_resp.json().get("message") == None:
-        print(register_resp.json().get("detail"))
+        print(f"Registro: {register_resp.json().get('detail')}")
     else:
-        print(register_resp.json().get("message"))
+        print(f"Registro: {register_resp.json().get('message')}")
 
     # Iniciamos sesión para obtener el Session Token. 
     # Este token actuará como nuestra "Clave Secreta Compartida" para firmar 
@@ -37,16 +39,20 @@ def run_client():
     login_resp = requests.post(f"{BASE_URL}/api/v1/login", json = creds)
     session_token = login_resp.json().get("session_token")
     if login_resp.json().get("message") == None:
-        print(login_resp.json().get("detail"))
+        print(f"Login: {login_resp.json().get('detail')}")
+        # Si falla el login, detenemos la ejecución para evitar errores posteriores
+        print("Abortando ejecución porque no se pudo obtener el token de sesión.")
+        sys.exit(1)
     else:
-        print(login_resp.json().get("message"))
+        print(f"Login: {login_resp.json().get('message')}")
 
     
     # ==========================================
     # 2. PREPARACIÓN DE LA TRANSACCIÓN
     # ==========================================
     tx_data = {
-        "txId": str(uuid.uuid4),
+        # CORREGIDO: Añadidos los paréntesis a uuid.uuid4()
+        "txId": str(uuid.uuid4()),
         "origin_account": "ES123456789",
         "destination_account": "ES987654321",
         "amount": 500.00,
@@ -99,7 +105,7 @@ def run_client():
     # Usamos 'data=body_str' en lugar de 'json=tx_data' para garantizar que 'requests' 
     # envíe exactamente el string que acabamos de firmar, sin re-serializarlo.
     response = requests.post(f"{BASE_URL}/api/v1/transfer", data = body_str, headers = headers)
-    print(f"Respuesta del Servidor: {response.status_code} - {response.text}")
+    print(f"Respuesta del Servidor a la Transferencia: {response.status_code} - {response.text}")
 
 
     # ==========================================
@@ -109,9 +115,9 @@ def run_client():
     # para reducir la ventana de exposición si el token es robado.
     logout_resp = requests.post(f"{BASE_URL}/api/v1/logout", headers = {"X-Session-Token": session_token})
     if logout_resp.json().get("message") == None:
-        print(logout_resp.json().get("detail"))
+        print(f"Logout: {logout_resp.json().get('detail')}")
     else:
-        print(logout_resp.json().get("message"))
+        print(f"Logout: {logout_resp.json().get('message')}")
     
 
 if __name__ == "__main__":

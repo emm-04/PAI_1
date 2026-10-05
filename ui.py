@@ -42,7 +42,7 @@ def web_page():
         with tab_login:
             with streamlit.form("login_form"):
                 user_input = streamlit.text_input("Usuario", value = "Marcos")
-                pass_input = streamlit.text_input("Contraseña", type = "password", value = "marcosSecurePass2026")
+                pass_input = streamlit.text_input("Contraseña", type = "password", value = "Secur3Bank!2026")
                 btn_login = streamlit.form_submit_button("Iniciar sesión")
 
                 if btn_login:

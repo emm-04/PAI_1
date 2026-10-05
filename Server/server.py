@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 import time
-import security
+import security # Asegúrate de que este archivo ahora contenga la función validate_password_policy
 import sqlite3
 import json
 import uvicorn
@@ -37,9 +37,15 @@ class UserAuth(BaseModel):
 
 @app.post("/api/v1/register")
 def register(user: UserAuth):
+    # 1. VALIDACIÓN DE POLÍTICA DE CONTRASEÑAS (NUEVO)
+    is_valid, msg = security.validate_password_policy(user.password, user.username)
+    if not is_valid:
+        raise HTTPException(status_code = 400, detail = msg)
+
     conn = database.get_connection()
     c = conn.cursor()
 
+    # 2. GENERACIÓN DE CREDENCIALES SEGURAS
     # Generamos el hash y el salt a través del módulo de seguridad.
     # NUNCA guardamos la contraseña plana 'user.password'.
     salt, key  = security.hash_password(user.password)
@@ -62,7 +68,8 @@ def register(user: UserAuth):
 def login(user: UserAuth):
     """
     Autentica a un usuario y genera un token de sesión de un solo uso.
-    Implementa protección contra fuerza bruta y ataques de tiempo.
+    Implementa protección contra fuerza bruta con bloqueos temporales 
+    y previene ataques de tiempo.
     """
     conn = database.get_connection()
     c = conn.cursor()
@@ -77,17 +84,28 @@ def login(user: UserAuth):
         raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
 
     stored_hash, salt, failed_attempts, lockout_until = row
-    current_time = time.time()
+    current_time = int(time.time())
 
-    if failed_attempts >= 3:
+    # 2. VERIFICACIÓN DE BLOQUEO TEMPORAL (CORREGIDO)
+    if lockout_until and current_time < lockout_until:
         conn.close()
-        raise HTTPException(status_code = 403, detail = "Cuenta bloqueada por múltiples intentos fallidos.")
+        raise HTTPException(status_code = 403, detail = "Cuenta bloqueada temporalmente por múltiples intentos fallidos. Inténtalo más tarde.")
+
+    # Si el tiempo de bloqueo ya expiró, reseteamos lógicamente los intentos para esta prueba
+    if lockout_until and current_time >= lockout_until:
+        failed_attempts = 0
 
     # 3. VERIFICACIÓN DE LA CONTRASEÑA
     _, computed_hash = security.hash_password(user.password, salt)
+    
     # Utilizamos compare_digest para evitar Timing Attacks
     if not security.secrets.compare_digest(stored_hash, computed_hash):
-        c.execute("UPDATE users SET failed_attempts = failed_attempts + 1 WHERE username = ?", (user.username,))
+        failed_attempts += 1
+        # Si llega a 3 intentos, bloqueamos por 5 minutos (300 segundos)
+        new_lockout = current_time + 300 if failed_attempts >= 3 else None
+        
+        c.execute("UPDATE users SET failed_attempts = ?, lockout_until = ? WHERE username = ?", 
+                  (failed_attempts, new_lockout, user.username))
         conn.commit()
         conn.close()
         raise HTTPException(status_code = 401, detail = "Credenciales inválidas")
@@ -96,9 +114,9 @@ def login(user: UserAuth):
     # 4. GENERACIÓN DE SESIÓN (Estado autenticado)
     # Generamos un token criptográficamente seguro de 32 bytes (64 caracteres hex)
     session_token = security.secrets.token_hex(32)
-   # conn = database.get_connection()
-   # c = conn.cursor()
-    c.execute("UPDATE users SET failed_attempts = 0, session_token = ? WHERE username = ?", 
+    
+    # Reseteamos fallos y limpiamos el bloqueo
+    c.execute("UPDATE users SET failed_attempts = 0, lockout_until = NULL, session_token = ? WHERE username = ?", 
                   (session_token, user.username))
     conn.commit()
     conn.close()
@@ -212,5 +230,4 @@ async def transfer(
 
 
 if __name__ == "__main__":
-    # Inicia el servidor ASGI de Uvicorn (Corregido un pequeño typo en el '8080)v' original)
     uvicorn.run(app, host = "127.0.0.1", port = 8080)
